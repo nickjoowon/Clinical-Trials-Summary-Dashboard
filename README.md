@@ -1,1 +1,1 @@
-# Medical-QA-Dashboard
+# Clinical-Trials-Summary-Dashboard
