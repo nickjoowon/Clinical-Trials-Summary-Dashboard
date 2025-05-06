@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+transformers
+sentence-transformers
+torch
+faiss-cpu
+python-dotenv
+streamlit
+numpy
+pandas
