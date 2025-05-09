@@ -8,3 +8,8 @@ python-dotenv
 streamlit
 numpy
 pandas
+requests
+matplotlib
+seaborn
+jupyter
+notebook
