@@ -10,22 +10,15 @@ def fetch_clinical_trials(max_results: int = 100) -> Dict[str, Any]:
     
     # Define the fields we want to retrieve - focusing on text-rich fields for LLM processing
     fields = [
-        "NCTId",
-        "BriefTitle",
-        "OfficialTitle",
-        "BriefSummary",
-        "DetailedDescription",
-        "Condition",
-        "InterventionDescription",
-        "EligibilityCriteria",
-        "StudyType",
-        "OverallStatus",
-        "EnrollmentCount",
-        "StartDate",
-        "CompletionDate",
-        "LastUpdatePostDate",
-        "LeadSponsorName",
-        "LocationFacility"
+        "IdentificationModule",
+        "StatusModule",
+        "SponsorCollaboratorsModule",
+        "ConditionsModule",
+        "ArmsInterventionsModule",
+        "EligibilityModule",
+        "DescriptionModule",
+        "DesignModule",
+        "OutcomesModule"
     ]
     
     params = {
@@ -49,7 +42,7 @@ def fetch_clinical_trials(max_results: int = 100) -> Dict[str, Any]:
         print(f"Response content: {response.text}")
         raise
 
-def preprocess_trial_data(trials_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def preprocess_trial_data(trials_data):
     """Preprocess the clinical trials data for LLM processing"""
     # Extract studies from the response
     studies = trials_data.get('studies', [])
@@ -60,28 +53,74 @@ def preprocess_trial_data(trials_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     for study in studies:
         # Extract the protocol section which contains most of the text data
         protocol = study.get('protocolSection', {})
+        results = study.get('resultsSection', {})
         
         # Create a structured dictionary for each trial
         trial = {
+            # Identification Module
             'nct_id': protocol.get('identificationModule', {}).get('nctId'),
+            'organization_full_name': protocol.get('identificationModule', {}).get('organization', {}).get('fullName'),
             'title': protocol.get('identificationModule', {}).get('briefTitle'),
             'official_title': protocol.get('identificationModule', {}).get('officialTitle'),
-            'brief_summary': protocol.get('descriptionModule', {}).get('briefSummary'),
-            'detailed_description': protocol.get('descriptionModule', {}).get('detailedDescription'),
-            'conditions': protocol.get('conditionsModule', {}).get('conditions', []),
-            'interventions': [intervention.get('description') for intervention in protocol.get('armsInterventionsModule', {}).get('interventions', [])],
-            'eligibility_criteria': protocol.get('eligibilityModule', {}).get('eligibilityCriteria'),
-            'study_type': protocol.get('designModule', {}).get('studyType'),
+
+            # Status Module
+            'why_stopped': protocol.get('statusModule', {}).get('whyStopped'),
             'status': protocol.get('statusModule', {}).get('overallStatus'),
-            'enrollment': protocol.get('statusModule', {}).get('enrollmentCount'),
             'start_date': protocol.get('statusModule', {}).get('startDateStruct', {}).get('date'),
             'completion_date': protocol.get('statusModule', {}).get('completionDateStruct', {}).get('date'),
             'last_update': protocol.get('statusModule', {}).get('lastUpdatePostDateStruct', {}).get('date'),
+
+            # Sponsor Collaborators Module
             'sponsor': protocol.get('sponsorCollaboratorsModule', {}).get('leadSponsor', {}).get('name'),
-            'facility': [location.get('facility') for location in protocol.get('contactsLocationsModule', {}).get('locations', [])],
-            'primary_outcome': protocol.get('outcomesModule', {}).get('primaryOutcomes', [])
+            'collaborators': [collaborator.get('name') for collaborator in protocol.get('sponsorCollaboratorsModule', {}).get('collaborators', [])],
+
+            # Oversight Module
+            'has_dmc': protocol.get('oversightModule', {}).get('oversightHasDmc'),
+            'is_fda_regulated_drug': protocol.get('oversightModule', {}).get('isFdaRegulatedDrug'),
+            'is_fda_regulated_device': protocol.get('oversightModule', {}).get('isFdaRegulatedDevice'), 
+            'is_unapproved_device': protocol.get('oversightModule', {}).get('isUnapprovedDevice'),
+            'is_ppsd': protocol.get('oversightModule', {}).get('isPpsd'),
+            'is_us_export': protocol.get('oversightModule', {}).get('isUsExport'),
+
+            # Description Module
+            'brief_summary': protocol.get('descriptionModule', {}).get('briefSummary'),
+            'detailed_description': protocol.get('descriptionModule', {}).get('detailedDescription'),
+
+            # Conditions Module
+            'conditions': protocol.get('conditionsModule', {}).get('conditions', []),
+            
+            # Design Module
+            'study_type': protocol.get('designModule', {}).get('studyType'),
+            'study_phase': protocol.get('designModule', {}).get('phases', []),
+            'design_allocation': protocol.get('designModule', {}).get('designInfo', {}).get('allocation'),
+            'intervention_study_design': protocol.get('designModule', {}).get('designInfo', {}).get('interventionModel'),
+            'design_primary_purpose': protocol.get('designModule', {}).get('designInfo', {}).get('primaryPurpose'),
+            'design_time_perspective': protocol.get('designModule', {}).get('designInfo', {}).get('timePerspective'),
+            'enrollment': protocol.get('statusModule', {}).get('enrollmentCount'),
+        
+            # Arms Interventions Module
+            'arm_group_label': [intervention.get('label') for intervention in protocol.get('armsInterventionsModule', {}).get('interventions', [])],
+            'intervention_types': [intervention.get('type') for intervention in protocol.get('armsInterventionsModule', {}).get('interventions', [])],
+            'intervention_names': [intervention.get('name') for intervention in protocol.get('armsInterventionsModule', {}).get('interventions', [])],
+            'intervention_descriptions': [intervention.get('description') for intervention in protocol.get('armsInterventionsModule', {}).get('interventions', [])],
+            
+            # Outcomes Module
+            'primary_outcomes': protocol.get('outcomesModule', {}).get('primaryOutcomes', []),
+            'secondary_outcomes': protocol.get('outcomesModule', {}).get('secondaryOutcomes', []),
+            
+            # Eligibility Module
+            'eligibility_criteria': protocol.get('eligibilityModule', {}).get('eligibilityCriteria'),
+            'eligibility_gender': protocol.get('eligibilityModule', {}).get('gender'),
+            'eligibility_age': protocol.get('eligibilityModule', {}).get('age'),
+            'eligibility_healthy_volunteers': protocol.get('eligibilityModule', {}).get('healthyVolunteers'),
+            'eligibility_healthy_volunteers_description': protocol.get('eligibilityModule', {}).get('healthyVolunteersDescription'),
+            
+            # Contacts Locations Module
+            'facility': [location.get('facility') for location in protocol.get('contactsLocationsModule', {}).get('locations', [])]
+
+            # Results Section
         }
         
         processed_trials.append(trial)
     
-    return processed_trials 
+    return processed_trials
