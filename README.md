@@ -63,7 +63,7 @@ Clinical-Trials-Summary-Dashboard/
 
 1. **Start Ollama**:
 ```bash
-ollama serve
+ollama list
 ```
 
 2. **Run the Streamlit app**:
