@@ -1,86 +1,100 @@
 # Clinical Trials Summary Dashboard
 
-A Streamlit-based dashboard for exploring and analyzing clinical trials data from ClinicalTrials.gov. The application uses semantic search and embeddings to provide intelligent insights about clinical trials.
+A Streamlit-based dashboard that provides an interactive interface for querying and analyzing clinical trials data using RAG (Retrieval-Augmented Generation) with Ollama's Mistral model.
 
 ## Features
 
-- **Chat Interface**: Ask questions about clinical trials and get AI-powered responses
-- **Semantic Search**: Search through clinical trials using natural language queries
-- **Statistics Dashboard**: View distributions and trends in clinical trial data
-- **Embedding-based Analysis**: Uses FAISS and sentence transformers for efficient similarity search
+- 🤖 AI-powered chat interface for querying clinical trials
+- 🔍 Advanced search capabilities
+- 📊 Interactive statistics and visualizations
+- 💾 Local vector storage for efficient retrieval
+- 🆓 Free LLM integration using Ollama's Mistral model
+
+## Prerequisites
+
+- Python 3.8+
+- Ollama (for local LLM)
+- Git
+
+## Installation
+
+1. **Clone the repository**:
+```bash
+git clone https://github.com/yourusername/Clinical-Trials-Summary-Dashboard.git
+cd Clinical-Trials-Summary-Dashboard
+```
+
+2. **Install Python dependencies**:
+```bash
+pip install -r requirements.txt
+```
+
+3. **Install and Setup Ollama**:
+   - Download Ollama from [ollama.ai](https://ollama.ai/download)
+   - Install and run Ollama
+   - Pull the Mistral model:
+```bash
+ollama pull mistral
+```
 
 ## Project Structure
 
 ```
 Clinical-Trials-Summary-Dashboard/
 ├── app/
-│   └── app.py              # Streamlit dashboard application
+│   └── app.py              # Streamlit application
 ├── src/
 │   ├── data/
-│   │   └── clinical_trials.py    # Data fetching and preprocessing
-│   ├── processing/
-│   │   └── text_processor.py     # Text processing and chunking
-│   └── embeddings/
-│       └── embedding_manager.py  # Embedding creation and management
+│   │   └── clinical_trials.py
+│   ├── rag/
+│   │   ├── rag_manager.py
+│   │   ├── document_processor.py
+│   │   ├── text_processor.py
+│   │   └── vector_store.py
+│   └── prompts/
+│       └── templates.py
 ├── data/
-│   └── embeddings/         # Directory for storing embeddings
-├── requirements.txt        # Project dependencies
-└── README.md              # Project documentation
-```
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/Clinical-Trials-Summary-Dashboard.git
-cd Clinical-Trials-Summary-Dashboard
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
+│   └── embeddings/         # Vector store directory
+├── requirements.txt
+└── README.md
 ```
 
 ## Usage
 
-1. Start the Streamlit dashboard:
+1. **Start Ollama**:
+```bash
+ollama serve
+```
+
+2. **Run the Streamlit app**:
 ```bash
 streamlit run app/app.py
 ```
 
-2. Access the dashboard in your web browser at `http://localhost:8501`
-
-3. Use the navigation sidebar to access different features:
-   - **Chat**: Ask questions about clinical trials
-   - **Search**: Search for specific trials
-   - **Statistics**: View trial distributions and trends
+3. **Access the dashboard**:
+   - Open your browser and go to `http://localhost:8501`
+   - Use the chat interface to ask questions about clinical trials
+   - Explore the search and statistics features
 
 ## Features in Detail
 
 ### Chat Interface
-- Ask natural language questions about clinical trials
-- Get AI-powered responses based on relevant trial information
-- View conversation history during your session
+- Natural language queries about clinical trials
+- Context-aware responses using RAG
+- Conversation history tracking
 
-### Semantic Search
-- Search using natural language queries
-- Results ranked by semantic similarity
-- View detailed trial information including:
-  - Study type
-  - Status
-  - Sponsor
-  - Dates
-  - Full text content
+### Search
+- Semantic search across clinical trials
+- Filtering and sorting options
+- Detailed trial information display
 
-### Statistics Dashboard
-- View distributions of:
-  - Study types
-  - Trial statuses
-- Explore raw trial data in an interactive table
+### Statistics
+- Study type distribution
+- Status tracking
+- Interactive visualizations
 
-## Technical Details
+## Acknowledgments
 
-- Uses ClinicalTrials.gov API v2 for data fetching
-- Implements FAISS for efficient similarity search
-- Uses sentence-transformers for creating embeddings
-- Streamlit for the web interface
+- [Ollama](https://ollama.ai/) for providing the local LLM
+- [Streamlit](https://streamlit.io/) for the web interface
+- [ChromaDB](https://www.trychroma.com/) for vector storage
