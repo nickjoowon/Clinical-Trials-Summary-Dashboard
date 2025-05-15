@@ -30,13 +30,17 @@ def combine_trial_text(trial: Dict[str, Any]) -> str:
     
     # Add conditions
     if trial.get('conditions'):
-        conditions = ', '.join(trial['conditions'])
-        sections.append(f"Conditions: {conditions}")
+        conditions = ', '.join(filter(None, trial['conditions']))
+        if conditions:
+            sections.append(f"Conditions: {conditions}")
     
     # Add interventions
     if trial.get('interventions'):
-        interventions = '; '.join(trial['interventions'])
-        sections.append(f"Interventions: {interventions}")
+        # Filter out None values and empty strings
+        valid_interventions = list(filter(None, trial['interventions']))
+        if valid_interventions:
+            interventions = '; '.join(valid_interventions)
+            sections.append(f"Interventions: {interventions}")
     
     # Add eligibility criteria
     if trial.get('eligibility_criteria'):
