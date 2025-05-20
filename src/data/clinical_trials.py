@@ -116,9 +116,49 @@ def preprocess_trial_data(trials_data):
             'eligibility_healthy_volunteers_description': protocol.get('eligibilityModule', {}).get('healthyVolunteersDescription'),
             
             # Contacts Locations Module
-            'facility': [location.get('facility') for location in protocol.get('contactsLocationsModule', {}).get('locations', [])]
+            'facility': [location.get('facility') for location in protocol.get('contactsLocationsModule', {}).get('locations', [])],
 
             # Results Section
+            # Participant Flow Module
+            'period_title': results.get('participantFlowModule', {}).get('periods', {}).get('title'),
+            'milestone_title': results.get('participantFlowModule', {}).get('periods', {}).get('milestones', {}).get('type'),
+            'milestone_comment': results.get('participantFlowModule', {}).get('periods', {}).get('milestones', {}).get('comment'),
+            'num_of_periods': results.get('participantFlowModule', {}).get('numFlowPeriods'),
+
+            # Baseline Characteristics Module
+            'baseline_analysis_population_description': results.get('baselineCharacteristicsModule', {}).get('populationDescription'),
+            'arm_group_title': results.get('baselineCharacteristicsModule', {}).get('groups', {}).get('title'),
+            'arm_group_description': results.get('baselineCharacteristicsModule', {}).get('groups', {}).get('description'),
+            'baseline_measure_title': results.get('baselineCharacteristicsModule', {}).get('measures', {}).get('title'),
+            'baseline_measure_title_for_study_specified_measure': results.get('baselineCharacteristicsModule', {}).get('measures', {}).get('description'),
+            'baseline_measure_type': results.get('baselineCharacteristicsModule', {}).get('measures', {}).get('paramType'),
+            'baseline_measure_dispersion_precision': results.get('baselineCharacteristicsModule', {}).get('measures', {}).get('dispersionType'),
+            'baseline_unit_of_measure': results.get('baselineCharacteristicsModule', {}).get('measures', {}).get('unitOfMeasure'),
+
+            # Outcome Measures Module
+            'outcome_measure_type': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('type'),
+            'outcome_measure_title': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('title'),
+            'outcome_measure_time_frame': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('timeFrame'),
+            'outcome_group_title': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('groups', {}).get('title'),
+            'outcome_denom_count_value': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('denoms', {}).get('counts', {}).get('value'),
+            'outcome_measure_data_type': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('paramType'),
+            'outcome_measure_dispersion_precision': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('dispersionType'),
+            'outcome_measurement_value': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('classes', {}).get('categories', {}).get('measurements', {}).get('value'),
+            'outcome_measure_unit_of_measure': results.get('outcomeMeasuresModule', {}).get('outcomeMeasures', {}).get('unitOfMeasure'),
+
+            # Adverse Events Module
+            'adverse_events_arm_group_title': results.get('adverseEventsModule', {}).get('eventGroups', {}).get('title'),
+            'num_affected_by_serious_adverse_event': results.get('adverseEventsModule', {}).get('eventGroups', {}).get('seriousNumAffected'),
+            'num_affected_by_serious_adverse_event_description': results.get('adverseEventsModule', {}).get('eventGroups', {}).get('seriousNumAffectedDescription'),
+            'num_at_risk_for_serious_adverse_event': results.get('adverseEventsModule', {}).get('eventGroups', {}).get('seriousNumAtRisk'),
+            'num_affected_by_other_adverse_event': results.get('adverseEventsModule', {}).get('eventGroups', {}).get('otherNumAffected'),
+            'num_at_risk_for_other_adverse_event': results.get('adverseEventsModule', {}).get('eventGroups', {}).get('otherNumAtRisk'),
+            'adverse_event_term': results.get('adverseEventsModule', {}).get('seriousEvents', {}).get('term'),
+            'organ_system': results.get('adverseEventsModule', {}).get('seriousEvents', {}).get('organSystem'),
+
+            # More Info Module
+            'point_of_contact_title': results.get('moreInfoModule', {}).get('pointOfContact', {}).get('title'),
+            'point_of_contact_organization': results.get('moreInfoModule', {}).get('pointOfContact', {}).get('organization')
         }
         
         processed_trials.append(trial)
