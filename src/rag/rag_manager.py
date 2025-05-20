@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .document_processor import ClinicalTrialProcessor
 from .text_processor import TextProcessor
 from .vector_store import VectorStoreManager
@@ -37,9 +37,9 @@ class OllamaProvider:
                     "model": self.model,
                     "prompt": f"{prompt}\n\nUser: {query}\nAssistant:",
                     "temperature": temperature,
-                    "stream": False  # Ensure we get a complete response
+                    "stream": False
                 },
-                timeout=30  # Add timeout
+                timeout=30
             )
             
             if response.status_code != 200:
@@ -51,7 +51,6 @@ class OllamaProvider:
                     raise ValueError("Invalid response format from Ollama")
                 return result["response"]
             except json.JSONDecodeError as e:
-                # Try to extract response from raw text if JSON parsing fails
                 text = response.text.strip()
                 if text:
                     return text
@@ -71,7 +70,8 @@ class RAGManager:
         self,
         persist_directory: str = "./chroma_db",
         chunk_size: int = 1000,
-        chunk_overlap: int = 200
+        chunk_overlap: int = 200,
+        model_name: str = "mistral"
     ):
         """Initialize the RAG system components."""
         self.text_processor = TextProcessor()
@@ -80,119 +80,54 @@ class RAGManager:
             chunk_overlap=chunk_overlap
         )
         self.vector_store = VectorStoreManager(persist_directory=persist_directory)
-        self.llm = OllamaProvider(model="mistral")
+        self.llm = OllamaProvider(model=model_name)
+        self.model_name = model_name
         
         self.usage_stats = {
             "total_queries": 0,
             "total_tokens": 0,
-            "queries_by_model": {"mistral": 0},
+            "queries_by_model": {model_name: 0},
             "last_reset": datetime.now().isoformat()
         }
     
-    def _determine_query_type(self, query: str) -> str:
-        """Determine the type of query based on keywords."""
-        query_lower = query.lower()
-        
-        # Define keyword patterns for each query type
-        patterns = {
-            'status': r'\b(status|phase|stage|current state|recruiting|completed|terminated|suspended)\b',
-            'eligibility': r'\b(eligible|eligibility|criteria|requirements|inclusion|exclusion|age|gender)\b',
-            'intervention': r'\b(intervention|treatment|drug|therapy|medication|dose|dosage|administration)\b',
-            'outcome': r'\b(outcome|result|endpoint|measure|assessment|evaluation|primary|secondary)\b'
-        }
-        
-        # Check each pattern
-        for query_type, pattern in patterns.items():
-            if re.search(pattern, query_lower):
-                return query_type
-        
-        return 'general'
-    
-    def _get_relevant_trials(self, query: str, k: int = 4) -> List[Dict[str, Any]]:
-        """Retrieve relevant trials for a query."""
-        # Check if query contains an NCT ID
-        nct_id_match = re.search(r'NCT\d{8}', query)
-        
-        if nct_id_match:
-            # If NCT ID is found, try to get that specific trial
-            nct_id = nct_id_match.group()
-            doc = self.vector_store.get_document_by_id(nct_id)
-            if doc:
-                return [{
-                    'nct_id': nct_id,
-                    'title': doc.metadata.get('title'),
-                    'status': doc.metadata.get('status'),
-                    'phase': doc.metadata.get('phase'),
-                    'content': doc.page_content
-                }]
-        
-        # If no NCT ID or trial not found, perform semantic search
-        documents = self.vector_store.similarity_search(query, k=k)
-        
-        # Convert documents back to trial format
-        trials = []
-        seen_nct_ids = set()
-        
-        for doc in documents:
-            nct_id = doc.metadata.get('nct_id')
-            if nct_id not in seen_nct_ids:
-                seen_nct_ids.add(nct_id)
-                trials.append({
-                    'nct_id': nct_id,
-                    'title': doc.metadata.get('title'),
-                    'status': doc.metadata.get('status'),
-                    'phase': doc.metadata.get('phase'),
-                    'content': doc.page_content
-                })
-        
-        return trials
-    
-    def _get_prompt_for_query(self, query: str, trials: List[Dict[str, Any]]) -> str:
-        """Get the appropriate prompt template based on query type."""
-        query_type = self._determine_query_type(query)
-        
-        prompt_methods = {
-            'status': PromptTemplates.get_status_query_prompt,
-            'eligibility': PromptTemplates.get_eligibility_query_prompt,
-            'intervention': PromptTemplates.get_intervention_query_prompt,
-            'outcome': PromptTemplates.get_outcome_query_prompt,
-            'general': PromptTemplates.get_general_query_prompt
-        }
-        
-        # Get the appropriate prompt template
-        prompt_template = prompt_methods[query_type](trials)
-        
-        # Replace placeholder with actual query
-        return prompt_template.replace("[User's question]", query)
-    
-    def get_response(
-        self,
-        query: str,
-        k: int = 4,
-        temperature: float = 0.7
-    ) -> str:
+    def get_response(self, query: str) -> str:
         """Generate a response for a user query."""
         try:
-            # Get relevant trials
-            trials = self._get_relevant_trials(query, k=k)
+            # Get relevant documents
+            relevant_docs = self.vector_store.similarity_search(query, k=5)
             
-            if not trials:
+            if not relevant_docs:
                 return "I couldn't find any relevant clinical trials for your query."
             
-            # Get appropriate prompt template
-            prompt = self._get_prompt_for_query(query, trials)
+            # Combine relevant documents
+            context = "\n\n".join([doc.page_content for doc in relevant_docs])
             
-            # Count input tokens
-            input_tokens = self.llm.count_tokens(prompt) + self.llm.count_tokens(query)
+            # Determine query type and select appropriate prompt
+            query_lower = query.lower()
+            
+            # Check for trial discovery queries
+            discovery_keywords = ["show me", "find", "list", "related to", "about", "for"]
+            if any(keyword in query_lower for keyword in discovery_keywords):
+                prompt = PromptTemplates.get_trial_discovery_prompt(query, context)
+            # Check for summary requests
+            elif any(keyword in query_lower for keyword in ["summarize", "summary", "summarise", "brief", "overview", "sum up"]):
+                if any(keyword in query_lower for keyword in ["detailed", "comprehensive", "complete", "full"]):
+                    prompt = PromptTemplates.get_detailed_summary_prompt(query, context)
+                else:
+                    prompt = PromptTemplates.get_summary_prompt(query, context)
+            # Default to general query
+            else:
+                prompt = PromptTemplates.get_general_query_prompt(query, context)
             
             # Generate response
-            response = self.llm.generate_response(prompt, query, temperature)
+            response = self.llm.generate_response(prompt, query)
             
             # Update usage stats
+            input_tokens = self.llm.count_tokens(prompt) + self.llm.count_tokens(query)
             output_tokens = self.llm.count_tokens(response)
             self.usage_stats["total_queries"] += 1
             self.usage_stats["total_tokens"] += input_tokens + output_tokens
-            self.usage_stats["queries_by_model"]["mistral"] += 1
+            self.usage_stats["queries_by_model"][self.model_name] += 1
             
             return response
             
@@ -202,13 +137,8 @@ class RAGManager:
     
     def add_trials(self, trials_data: List[Dict[str, Any]]) -> None:
         """Add new clinical trials to the system."""
-        # First, clean and preprocess the text
         processed_trials = self.text_processor.process_trials_batch(trials_data)
-        
-        # Then, process into documents
         documents = self.document_processor.process_trials_batch(processed_trials)
-        
-        # Finally, add to vector store
         self.vector_store.add_documents(documents)
     
     def clear_database(self) -> None:
@@ -228,6 +158,6 @@ class RAGManager:
         self.usage_stats = {
             "total_queries": 0,
             "total_tokens": 0,
-            "queries_by_model": {"mistral": 0},
+            "queries_by_model": {self.model_name: 0},
             "last_reset": datetime.now().isoformat()
         } 
