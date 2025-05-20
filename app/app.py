@@ -7,8 +7,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.data.clinical_trials import fetch_clinical_trials, preprocess_trial_data
-from src.processing.text_processor import prepare_trials_for_embedding
-from src.embeddings.embedding_manager import EmbeddingManager
+from src.rag.rag_manager import RAGManager
 
 # Set page config
 st.set_page_config(
@@ -18,56 +17,38 @@ st.set_page_config(
 )
 
 # Initialize session state
-if 'embedding_manager' not in st.session_state:
-    st.session_state.embedding_manager = None
+if 'rag_manager' not in st.session_state:
+    st.session_state.rag_manager = None
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 
-def load_or_create_embeddings():
-    """Load existing embeddings or create new ones."""
-    embedding_dir = "data/embeddings"
-    
-    if os.path.exists(os.path.join(embedding_dir, "index.faiss")):
-        # Load existing embeddings
-        st.session_state.embedding_manager = EmbeddingManager()
-        st.session_state.embedding_manager.load_index(embedding_dir)
-        return True
-    else:
-        # Create new embeddings
+def initialize_rag_system():
+    """Initialize the RAG system with clinical trials data."""
+    try:
+        # Create RAG manager
+        st.session_state.rag_manager = RAGManager()
+        
+        # Fetch and process trials
         with st.spinner("Fetching clinical trials data..."):
             trials_data = fetch_clinical_trials(max_results=100)
             processed_trials = preprocess_trial_data(trials_data)
-            
-        with st.spinner("Preparing data for embedding..."):
-            embedding_data = prepare_trials_for_embedding(processed_trials)
-            
-        with st.spinner("Creating embeddings..."):
-            st.session_state.embedding_manager = EmbeddingManager()
-            texts = [item['text'] for item in embedding_data]
-            embeddings = st.session_state.embedding_manager.create_embeddings(texts)
-            
-            st.session_state.embedding_manager.build_index(embeddings)
-            st.session_state.embedding_manager.add_metadata(embedding_data)
-            st.session_state.embedding_manager.save_index(embedding_dir)
+        
+        # Add trials to RAG system
+        with st.spinner("Processing trials for RAG system..."):
+            st.session_state.rag_manager.add_trials(processed_trials)
         
         return True
+    except Exception as e:
+        st.error(f"Error initializing RAG system: {str(e)}")
+        return False
 
 def generate_response(query: str) -> str:
-    """Generate a response based on the query and relevant trial information."""
-    # Search for relevant trials
-    results = st.session_state.embedding_manager.search(query, k=3)
-    
-    # Format the response
-    response = f"Based on the clinical trials data, here's what I found:\n\n"
-    
-    for i, result in enumerate(results, 1):
-        response += f"**Trial {i}: {result['metadata']['title']}**\n"
-        response += f"- Study Type: {result['metadata']['study_type']}\n"
-        response += f"- Status: {result['metadata']['status']}\n"
-        response += f"- Sponsor: {result['metadata']['sponsor']}\n"
-        response += f"- Key Information: {result['text'][:200]}...\n\n"
-    
-    return response
+    """Generate a response using the RAG system."""
+    try:
+        response = st.session_state.rag_manager.get_response(query)
+        return response
+    except Exception as e:
+        return f"I apologize, but I encountered an error: {str(e)}"
 
 def main():
     st.title("Clinical Trials Dashboard")
@@ -79,10 +60,10 @@ def main():
     if page == "Chat":
         st.header("Chat with Clinical Trials Assistant")
         
-        # Load embeddings if not already loaded
-        if st.session_state.embedding_manager is None:
-            if not load_or_create_embeddings():
-                st.error("Failed to load or create embeddings")
+        # Initialize RAG system if not already initialized
+        if st.session_state.rag_manager is None:
+            if not initialize_rag_system():
+                st.error("Failed to initialize RAG system. Please check if Ollama is running.")
                 return
         
         # Display chat history
@@ -101,17 +82,26 @@ def main():
             
             # Generate and display assistant response
             with st.chat_message("assistant"):
-                response = generate_response(prompt)
-                st.write(response)
-                st.session_state.chat_history.append({"role": "assistant", "content": response})
+                with st.spinner("Thinking..."):
+                    response = generate_response(prompt)
+                    st.write(response)
+                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+        
+        # Display usage statistics
+        if st.session_state.rag_manager:
+            with st.expander("Usage Statistics"):
+                stats = st.session_state.rag_manager.get_usage_stats()
+                st.write(f"Total Queries: {stats['total_queries']}")
+                st.write(f"Total Tokens: {stats['total_tokens']}")
+                st.write(f"Last Reset: {stats['last_reset']}")
     
     elif page == "Search":
         st.header("Search Clinical Trials")
         
-        # Load embeddings if not already loaded
-        if st.session_state.embedding_manager is None:
-            if not load_or_create_embeddings():
-                st.error("Failed to load or create embeddings")
+        # Initialize RAG system if not already initialized
+        if st.session_state.rag_manager is None:
+            if not initialize_rag_system():
+                st.error("Failed to initialize RAG system. Please check if Ollama is running.")
                 return
         
         # Search interface
@@ -119,18 +109,9 @@ def main():
         k = st.slider("Number of results to show", 1, 20, 5)
         
         if query:
-            results = st.session_state.embedding_manager.search(query, k=k)
-            
-            for i, result in enumerate(results, 1):
-                with st.expander(f"{i}. {result['metadata']['title']} (Score: {result['score']:.2f})"):
-                    st.write("**Text:**")
-                    st.write(result['text'])
-                    st.write("**Metadata:**")
-                    st.write(f"- Study Type: {result['metadata']['study_type']}")
-                    st.write(f"- Status: {result['metadata']['status']}")
-                    st.write(f"- Sponsor: {result['metadata']['sponsor']}")
-                    st.write(f"- Start Date: {result['metadata']['start_date']}")
-                    st.write(f"- Completion Date: {result['metadata']['completion_date']}")
+            with st.spinner("Searching..."):
+                response = st.session_state.rag_manager.get_response(query)
+                st.write(response)
     
     else:  # Statistics page
         st.header("Clinical Trials Statistics")
