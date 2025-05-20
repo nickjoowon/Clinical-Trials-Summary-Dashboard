@@ -2,45 +2,58 @@ import streamlit as st
 import pandas as pd
 import sys
 import os
+from pathlib import Path
 
-# Add the project root directory to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Get the absolute path of the project root directory
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent
+sys.path.insert(0, str(project_root))
 
-from src.data.clinical_trials import fetch_clinical_trials, preprocess_trial_data
+# Now import the modules
 from src.rag.rag_manager import RAGManager
+from src.data.clinical_trials import fetch_clinical_trials, preprocess_trial_data
 
 # Set page config
 st.set_page_config(
-    page_title="Clinical Trials Dashboard",
+    page_title="Clinical Trials Summary Dashboard",
     page_icon="🏥",
     layout="wide"
 )
-
-# Initialize session state
-if 'rag_manager' not in st.session_state:
-    st.session_state.rag_manager = None
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
 
 def initialize_rag_system():
     """Initialize the RAG system with clinical trials data."""
     try:
         # Create RAG manager
-        st.session_state.rag_manager = RAGManager()
+        rag_manager = RAGManager()
         
-        # Fetch and process trials
-        with st.spinner("Fetching clinical trials data..."):
-            trials_data = fetch_clinical_trials(max_results=100)
-            processed_trials = preprocess_trial_data(trials_data)
+        # Check if we already have data in the vector store
+        db_stats = rag_manager.get_database_stats()
         
-        # Add trials to RAG system
-        with st.spinner("Processing trials for RAG system..."):
-            st.session_state.rag_manager.add_trials(processed_trials)
+        if db_stats.get('total_documents', 0) > 0:
+            st.success("Using existing clinical trials data from local storage.")
+            return rag_manager
         
-        return True
+        # If no existing data, fetch and process new trials
+        else:
+            with st.spinner("Fetching clinical trials data..."):
+                trials_data = fetch_clinical_trials(max_results=500)
+                processed_trials = preprocess_trial_data(trials_data)
+        
+            # Add trials to RAG system
+            with st.spinner("Processing trials for RAG system..."):
+                rag_manager.add_trials(processed_trials)
+                st.success("Successfully loaded and processed clinical trials data.")
+        
+        return rag_manager
     except Exception as e:
         st.error(f"Error initializing RAG system: {str(e)}")
-        return False
+        return None
+
+# Initialize session state
+if 'rag_manager' not in st.session_state:
+    st.session_state.rag_manager = initialize_rag_system()
+    if st.session_state.rag_manager is None:
+        st.error("Failed to initialize RAG system. Please check if Ollama is running and try again.")
 
 def generate_response(query: str) -> str:
     """Generate a response using the RAG system."""
@@ -51,41 +64,50 @@ def generate_response(query: str) -> str:
         return f"I apologize, but I encountered an error: {str(e)}"
 
 def main():
-    st.title("Clinical Trials Dashboard")
+    st.title("Clinical Trials Summary Dashboard")
     
     # Sidebar
     st.sidebar.title("Navigation")
     page = st.sidebar.radio("Go to", ["Chat", "Search", "Statistics"])
     
     if page == "Chat":
-        st.header("Chat with Clinical Trials Assistant")
+        st.header("Chat with Clinical Trials Data")
         
-        # Initialize RAG system if not already initialized
-        if st.session_state.rag_manager is None:
-            if not initialize_rag_system():
-                st.error("Failed to initialize RAG system. Please check if Ollama is running.")
-                return
-        
+        # Initialize chat history
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
         # Display chat history
-        for message in st.session_state.chat_history:
+        for message in st.session_state.messages:
             with st.chat_message(message["role"]):
-                st.write(message["content"])
+                st.markdown(message["content"])
         
         # Chat input
-        if prompt := st.chat_input("Ask a question about clinical trials..."):
+        if prompt := st.chat_input("Ask a question about clinical trials"):
             # Add user message to chat history
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            
-            # Display user message
+            st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
-                st.write(prompt)
+                st.markdown(prompt)
             
-            # Generate and display assistant response
+            # Generate response
             with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
+                try:
                     response = generate_response(prompt)
-                    st.write(response)
-                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+                    st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    
+                    # Add download button for responses
+                    st.download_button(
+                        label="Download Response",
+                        data=response,
+                        file_name="clinical_trial_response.txt",
+                        mime="text/plain"
+                    )
+                    
+                except Exception as e:
+                    error_msg = f"Error processing your request: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
         
         # Display usage statistics
         if st.session_state.rag_manager:
@@ -98,45 +120,26 @@ def main():
     elif page == "Search":
         st.header("Search Clinical Trials")
         
-        # Initialize RAG system if not already initialized
-        if st.session_state.rag_manager is None:
-            if not initialize_rag_system():
-                st.error("Failed to initialize RAG system. Please check if Ollama is running.")
-                return
-        
-        # Search interface
-        query = st.text_input("Enter your search query:")
-        k = st.slider("Number of results to show", 1, 20, 5)
-        
-        if query:
-            with st.spinner("Searching..."):
-                response = st.session_state.rag_manager.get_response(query)
-                st.write(response)
+        # Search input
+        search_query = st.text_input("Enter your search query")
+        if search_query:
+            results = st.session_state.rag_manager.vector_store.similarity_search(search_query)
+            for i, result in enumerate(results, 1):
+                st.markdown(f"**Result {i}:**")
+                st.markdown(result.page_content)
+                st.markdown("---")
     
-    else:  # Statistics page
-        st.header("Clinical Trials Statistics")
+    elif page == "Statistics":
+        st.header("Database Statistics")
         
-        # Load data
-        trials_data = fetch_clinical_trials(max_results=100)
-        processed_trials = preprocess_trial_data(trials_data)
-        df = pd.DataFrame(processed_trials)
+        # Display database stats
+        stats = st.session_state.rag_manager.get_database_stats()
+        st.json(stats)
         
-        # Display basic statistics
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Study Types")
-            study_type_counts = df['study_type'].value_counts()
-            st.bar_chart(study_type_counts)
-        
-        with col2:
-            st.subheader("Status Distribution")
-            status_counts = df['status'].value_counts()
-            st.bar_chart(status_counts)
-        
-        # Display raw data
-        st.subheader("Raw Data")
-        st.dataframe(df)
+        # Display usage stats
+        usage_stats = st.session_state.rag_manager.get_usage_stats()
+        st.subheader("Usage Statistics")
+        st.json(usage_stats)
 
 if __name__ == "__main__":
     main()

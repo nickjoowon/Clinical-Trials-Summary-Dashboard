@@ -118,26 +118,87 @@ class PromptTemplates:
         Assistant: [Structured response]"""
 
     @staticmethod
-    def get_general_query_prompt(trials: List[Dict[str, Any]]) -> str:
-        context = "\n\n".join([
-            f"Trial: {trial.get('title', 'N/A')} (NCT ID: {trial.get('nct_id', 'N/A')})\n"
-            f"Official Title: {trial.get('official_title', 'N/A')}\n"
-            f"Organization: {trial.get('organization_full_name', 'N/A')}\n"
-            f"Status: {trial.get('status', 'N/A')}\n"
-            f"Phase: {', '.join(trial.get('study_phase', ['N/A']))}\n"
-            f"Study Type: {trial.get('study_type', 'N/A')}\n"
-            f"Brief Summary: {trial.get('brief_summary', 'N/A')}\n"
-            f"Conditions: {', '.join(trial.get('conditions', ['N/A']))}\n"
-            f"Sponsor: {trial.get('sponsor', 'N/A')}\n"
-            f"Collaborators: {', '.join(trial.get('collaborators', ['N/A']))}"
-            for trial in trials
-        ])
-        
-        return f"""System: {PromptTemplates.get_base_system_prompt()}
+    def get_general_query_prompt(query: str, context: str) -> str:
+        return f"""You are a helpful assistant specialized in analyzing clinical trials. Use the following context to answer the user's question. 
+        If the information is not available in the context, say so. Be concise but informative.
 
         Context:
         {context}
 
-        User Query: [User's question]
+        User's question: {query}
 
-        Assistant: [Structured response]""" 
+        Please provide a clear and accurate response based on the clinical trial information provided."""
+
+    @staticmethod
+    def get_summary_prompt(query: str, context: str) -> str:
+        return f"""You are a helpful assistant specialized in summarizing clinical trials. Create a concise summary of the following clinical trial information, 
+        focusing on the key aspects relevant to the user's request. Be clear and organized in your summary.
+
+        Context:
+        {context}
+
+        User's request: {query}
+
+        Please provide a well-structured summary that captures the essential information."""
+
+    @staticmethod
+    def get_detailed_summary_prompt(query: str, context: str) -> str:
+        return f"""You are a helpful assistant specialized in providing detailed summaries of clinical trials. Create a comprehensive summary of the following 
+        clinical trial information, covering all important aspects while maintaining clarity and organization. Include specific details, numbers, and outcomes 
+        where available.
+
+        Context:
+        {context}
+
+        User's request: {query}
+
+        Please provide a thorough and well-structured summary that includes all relevant details."""
+
+    @staticmethod
+    def get_eligibility_prompt(query: str, context: str) -> str:
+        return f"""You are a helpful assistant specialized in analyzing clinical trial eligibility criteria. Review the following clinical trial information 
+        and provide a clear explanation of the eligibility requirements, focusing on inclusion and exclusion criteria.
+
+        Context:
+        {context}
+
+        User's question: {query}
+
+        Please provide a detailed breakdown of the eligibility criteria, organized by inclusion and exclusion factors."""
+
+    @staticmethod
+    def get_outcome_prompt(query: str, context: str) -> str:
+        return f"""You are a helpful assistant specialized in analyzing clinical trial outcomes. Review the following clinical trial information and provide 
+        a clear explanation of the study outcomes, including primary and secondary endpoints, results, and their significance.
+
+        Context:
+        {context}
+
+        User's question: {query}
+
+        Please provide a detailed analysis of the trial outcomes, including any statistical significance and clinical relevance."""
+
+    @staticmethod
+    def get_trial_discovery_prompt(query: str, context: str) -> str:
+        return f"""You are a helpful assistant specialized in finding relevant clinical trials. Based on the user's request, 
+        identify and present the most relevant clinical trials from the provided context Make sure to not duplicate trials and if there are no relevant trials, say so.
+        Format your response as follows:
+
+        Start with a brief overview of what you found
+        
+        List up to 5 most relevant trials, each with:
+           - Trial title
+           - NCT ID
+           - Brief description (1-2 sentences)
+           - Current status
+           - Key eligibility criteria (if available)
+           - all the above in a bullet point list
+        
+        
+
+        Context:
+        {context}
+
+        User's request: {query}
+
+        Please provide a well-organized list of relevant clinical trials.""" 
