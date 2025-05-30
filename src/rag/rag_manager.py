@@ -4,6 +4,7 @@ from .text_processor import TextProcessor
 from .vector_store import VectorStoreManager
 from ..prompts.templates import PromptTemplates
 from dotenv import load_dotenv
+from langchain.schema import Document
 import os
 import re
 from datetime import datetime
@@ -90,37 +91,150 @@ class RAGManager:
             "last_reset": datetime.now().isoformat()
         }
     
+    def _get_documents_for_nct_id(self, nct_id: str, query: str) -> List[Document]:
+        """Get all documents for a specific NCT ID."""
+        # First try exact metadata match
+        relevant_docs = self.vector_store.similarity_search(
+            query,
+            k=50,  # Get more documents to ensure we find all chunks
+            filter_criteria={"nct_id": nct_id}
+        )
+        
+        # If no results, try without filter to see if we can find it
+        if not relevant_docs:
+            print(f"Debug: No results found with filter for {nct_id}")
+            # Try without filter to see what we get
+            all_docs = self.vector_store.similarity_search(query, k=50)
+            # Check if any of these docs have our NCT ID
+            relevant_docs = [
+                doc for doc in all_docs 
+                if doc.metadata.get('nct_id') == nct_id
+            ]
+            if relevant_docs:
+                print(f"Debug: Found {len(relevant_docs)} documents with NCT ID {nct_id} without filter")
+            else:
+                print(f"Debug: No documents found with NCT ID {nct_id} in any results")
+                return []
+        
+        # Sort documents by their chunk index if available
+        try:
+            relevant_docs.sort(key=lambda doc: int(doc.metadata.get('chunk_index', 0)))
+        except (ValueError, TypeError):
+            # If chunk_index is not available or not a number, keep original order
+            pass
+        
+        return relevant_docs
+
+    def _get_documents_for_query(self, query: str) -> List[Document]:
+        """Get all documents for a general query, ensuring complete trial information."""
+        # First, get the most relevant documents to find the most relevant trials
+        initial_docs = self.vector_store.similarity_search(query, k=5)
+        
+        if not initial_docs:
+            return []
+        
+        # Extract unique NCT IDs from the initial results
+        unique_nct_ids = set()
+        for doc in initial_docs:
+            nct_id = doc.metadata.get('nct_id')
+            if nct_id:
+                unique_nct_ids.add(nct_id)
+        
+        # For each unique NCT ID, get ALL documents for that trial
+        all_relevant_docs = []
+        for nct_id in unique_nct_ids:
+            trial_docs = self._get_documents_for_nct_id(nct_id, query)
+            all_relevant_docs.extend(trial_docs)
+        
+        # Sort documents by NCT ID and chunk index
+        try:
+            all_relevant_docs.sort(key=lambda doc: (
+                doc.metadata.get('nct_id', ''),
+                int(doc.metadata.get('chunk_index', 0))
+            ))
+        except (ValueError, TypeError):
+            # If chunk_index is not available or not a number, keep original order
+            pass
+        
+        return all_relevant_docs
+
+    def _select_prompt_template(self, query: str, context: str) -> str:
+        """Select the appropriate prompt template based on the query."""
+        query_lower = query.lower()
+        
+        # Check for outcome-related queries
+        outcome_keywords = [
+            "outcome", "results", "outcome measure", "outcomes", "measures"
+        ]
+        
+        if any(keyword in query_lower for keyword in outcome_keywords):
+            return PromptTemplates.get_outcome_prompt(query, context)
+        # Check for trial discovery queries
+        elif any(keyword in query_lower for keyword in ["show me", "find", "list", "related to", "about", "for"]):
+            return PromptTemplates.get_trial_discovery_prompt(query, context)
+        # Check for summary requests
+        elif any(keyword in query_lower for keyword in ["summarize", "summary", "summarise", "brief", "overview", "sum up"]):
+            if any(keyword in query_lower for keyword in ["detailed", "comprehensive", "complete", "full"]):
+                return PromptTemplates.get_detailed_summary_prompt(query, context)
+            else:
+                return PromptTemplates.get_summary_prompt(query, context)
+        # Default to general query
+        else:
+            return PromptTemplates.get_general_query_prompt(query, context)
+
+    def _verify_response(self, response: str, context: str) -> str:
+        """Verify that the response only contains information from the context."""
+        verification_prompt = f"""Verify if the following response contains ONLY information from the provided context. 
+        If the response contains any made-up or hallucinated information, return "HALLUCINATION_DETECTED".
+        If the response only contains information from the context, return "VERIFIED".
+
+        Context:
+        {context}
+
+        Response to verify:
+        {response}
+
+        Verification result:"""
+
+        verification = self.llm.generate_response(verification_prompt, "")
+        
+        if "HALLUCINATION_DETECTED" in verification:
+            return "I apologize, but I need to correct my previous response. I was about to provide some information that wasn't fully supported by the available data. Let me provide a more accurate response based only on the verified information:\n\n" + self.llm.generate_response(prompt + "\n\nIMPORTANT: Only use information explicitly stated in the context. Do not make up or infer any details.", query)
+        
+        return response
+
     def get_response(self, query: str) -> str:
         """Generate a response for a user query."""
         try:
-            # Get relevant documents
-            relevant_docs = self.vector_store.similarity_search(query, k=5)
+            # Check for NCT ID in query
+            nct_pattern = r'NCT\d{8}'
+            nct_matches = re.findall(nct_pattern, query.upper())
             
-            if not relevant_docs:
-                return "I couldn't find any relevant clinical trials for your query."
+            if nct_matches:
+                # Get specific trial by NCT ID
+                nct_id = nct_matches[0]
+                relevant_docs = self._get_documents_for_nct_id(nct_id, query)
+                
+                if not relevant_docs:
+                    return f"I couldn't find any clinical trial with {nct_id}."
+            else:
+                # Get relevant documents for general query
+                relevant_docs = self._get_documents_for_query(query)
+                
+                if not relevant_docs:
+                    return "I couldn't find any relevant clinical trials for your query."
             
             # Combine relevant documents
             context = "\n\n".join([doc.page_content for doc in relevant_docs])
             
-            # Determine query type and select appropriate prompt
-            query_lower = query.lower()
-            
-            # Check for trial discovery queries
-            discovery_keywords = ["show me", "find", "list", "related to", "about", "for"]
-            if any(keyword in query_lower for keyword in discovery_keywords):
-                prompt = PromptTemplates.get_trial_discovery_prompt(query, context)
-            # Check for summary requests
-            elif any(keyword in query_lower for keyword in ["summarize", "summary", "summarise", "brief", "overview", "sum up"]):
-                if any(keyword in query_lower for keyword in ["detailed", "comprehensive", "complete", "full"]):
-                    prompt = PromptTemplates.get_detailed_summary_prompt(query, context)
-                else:
-                    prompt = PromptTemplates.get_summary_prompt(query, context)
-            # Default to general query
-            else:
-                prompt = PromptTemplates.get_general_query_prompt(query, context)
+            # Select appropriate prompt template
+            prompt = self._select_prompt_template(query, context)
             
             # Generate response
             response = self.llm.generate_response(prompt, query)
+            
+            # Verify response
+            response = self._verify_response(response, context)
             
             # Update usage stats
             input_tokens = self.llm.count_tokens(prompt) + self.llm.count_tokens(query)

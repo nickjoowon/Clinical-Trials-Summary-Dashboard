@@ -62,11 +62,16 @@ class ClinicalTrialProcessor:
         {self._format_interventions(trial_data)}
         
         Outcomes:
-        Primary Outcomes:
-        {self._format_outcomes(trial_data.get('primary_outcomes', []))}
+        {self._format_outcomes(trial_data)}
         
-        Secondary Outcomes:
-        {self._format_outcomes(trial_data.get('secondary_outcomes', []))}
+        Participant Flow:
+        {self._format_participant_flow(trial_data)}
+        
+        Baseline Characteristics:
+        {self._format_baseline_characteristics(trial_data)}
+        
+        Adverse Events:
+        {self._format_adverse_events(trial_data)}
         
         Eligibility:
         Criteria:
@@ -119,20 +124,100 @@ class ClinicalTrialProcessor:
             interventions.append(intervention)
         return '\n'.join(interventions) if interventions else 'N/A'
     
-    def _format_outcomes(self, outcomes: List[Dict[str, Any]]) -> str:
+    def _format_outcomes(self, trial_data: Dict[str, Any]) -> str:
         """Format outcomes information into a readable string."""
-        if not outcomes:
-            return 'N/A'
+        outcomes = []
         
-        formatted_outcomes = []
-        for outcome in outcomes:
-            formatted_outcome = f"""
-            - Measure: {outcome.get('measure', 'N/A')}
-            - Time Frame: {outcome.get('timeFrame', 'N/A')}
-            - Description: {outcome.get('description', 'N/A')}
-            """
-            formatted_outcomes.append(formatted_outcome)
-        return '\n'.join(formatted_outcomes)
+        # Format primary outcomes
+        primary_outcomes = trial_data.get('primary_outcomes', [])
+        if primary_outcomes:
+            outcomes.append("Primary Outcomes:")
+            for outcome in primary_outcomes:
+                formatted_outcome = f"""
+                - Measure: {outcome.get('measure', 'N/A')}
+                - Time Frame: {outcome.get('timeFrame', 'N/A')}
+                - Description: {outcome.get('description', 'N/A')}
+                """
+                outcomes.append(formatted_outcome)
+        
+        # Format secondary outcomes
+        secondary_outcomes = trial_data.get('secondary_outcomes', [])
+        if secondary_outcomes:
+            outcomes.append("\nSecondary Outcomes:")
+            for outcome in secondary_outcomes:
+                formatted_outcome = f"""
+                - Measure: {outcome.get('measure', 'N/A')}
+                - Time Frame: {outcome.get('timeFrame', 'N/A')}
+                - Description: {outcome.get('description', 'N/A')}
+                """
+                outcomes.append(formatted_outcome)
+        
+        # Add outcome measures module information
+        outcome_measure_type = trial_data.get('outcome_measure_type')
+        outcome_measure_title = trial_data.get('outcome_measure_title')
+        outcome_measure_time_frame = trial_data.get('outcome_measure_time_frame')
+        
+        if any([outcome_measure_type, outcome_measure_title, outcome_measure_time_frame]):
+            outcomes.append("\nOutcome Measures Details:")
+            outcomes.append(f"- Type: {outcome_measure_type or 'N/A'}")
+            outcomes.append(f"- Title: {outcome_measure_title or 'N/A'}")
+            outcomes.append(f"- Time Frame: {outcome_measure_time_frame or 'N/A'}")
+        
+        return '\n'.join(outcomes) if outcomes else 'N/A'
+    
+    def _format_participant_flow(self, trial_data: Dict[str, Any]) -> str:
+        """Format participant flow information."""
+        flow_info = []
+        
+        period_title = trial_data.get('period_title')
+        milestone_title = trial_data.get('milestone_title')
+        milestone_comment = trial_data.get('milestone_comment')
+        num_periods = trial_data.get('num_of_periods')
+        
+        if any([period_title, milestone_title, milestone_comment, num_periods]):
+            flow_info.append("Participant Flow Information:")
+            flow_info.append(f"- Period Title: {period_title or 'N/A'}")
+            flow_info.append(f"- Milestone Title: {milestone_title or 'N/A'}")
+            flow_info.append(f"- Milestone Comment: {milestone_comment or 'N/A'}")
+            flow_info.append(f"- Number of Periods: {num_periods or 'N/A'}")
+        
+        return '\n'.join(flow_info) if flow_info else 'N/A'
+    
+    def _format_baseline_characteristics(self, trial_data: Dict[str, Any]) -> str:
+        """Format baseline characteristics information."""
+        baseline_info = []
+        
+        population_desc = trial_data.get('baseline_analysis_population_description')
+        arm_group_title = trial_data.get('arm_group_title')
+        arm_group_desc = trial_data.get('arm_group_description')
+        measure_title = trial_data.get('baseline_measure_title')
+        
+        if any([population_desc, arm_group_title, arm_group_desc, measure_title]):
+            baseline_info.append("Baseline Characteristics:")
+            baseline_info.append(f"- Population Description: {population_desc or 'N/A'}")
+            baseline_info.append(f"- Arm Group Title: {arm_group_title or 'N/A'}")
+            baseline_info.append(f"- Arm Group Description: {arm_group_desc or 'N/A'}")
+            baseline_info.append(f"- Measure Title: {measure_title or 'N/A'}")
+        
+        return '\n'.join(baseline_info) if baseline_info else 'N/A'
+    
+    def _format_adverse_events(self, trial_data: Dict[str, Any]) -> str:
+        """Format adverse events information."""
+        ae_info = []
+        
+        arm_group_title = trial_data.get('adverse_events_arm_group_title')
+        serious_num_affected = trial_data.get('num_affected_by_serious_adverse_event')
+        serious_num_at_risk = trial_data.get('num_at_risk_for_serious_adverse_event')
+        other_num_affected = trial_data.get('num_affected_by_other_adverse_event')
+        other_num_at_risk = trial_data.get('num_at_risk_for_other_adverse_event')
+        
+        if any([arm_group_title, serious_num_affected, serious_num_at_risk, other_num_affected, other_num_at_risk]):
+            ae_info.append("Adverse Events Information:")
+            ae_info.append(f"- Arm Group Title: {arm_group_title or 'N/A'}")
+            ae_info.append(f"- Serious Events: {serious_num_affected or 'N/A'} affected out of {serious_num_at_risk or 'N/A'} at risk")
+            ae_info.append(f"- Other Events: {other_num_affected or 'N/A'} affected out of {other_num_at_risk or 'N/A'} at risk")
+        
+        return '\n'.join(ae_info) if ae_info else 'N/A'
     
     def process_trials_batch(self, trials_data: List[Dict[str, Any]]) -> List[Document]:
         """Process multiple clinical trials into documents."""

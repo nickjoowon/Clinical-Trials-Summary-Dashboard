@@ -29,16 +29,38 @@ class VectorStoreManager:
             # Prepare data for ChromaDB
             ids = [f"doc_{i}_{datetime.now().strftime('%Y%m%d_%H%M%S')}" 
                   for i in range(len(documents))]
+            cleaned_metadatas = []
+            texts = []
             
-            texts = [doc.page_content for doc in documents]
-            metadatas = [doc.metadata for doc in documents]
+            for doc in documents:
+                # Clean metadata values
+                cleaned_metadata = {}
+                for key, value in doc.metadata.items():
+                    if value is None:
+                        cleaned_metadata[key] = "N/A"
+                    elif isinstance(value, (str, int, float, bool)):
+                        cleaned_metadata[key] = value
+                    else:
+                        cleaned_metadata[key] = str(value)
+                
+                cleaned_metadatas.append(cleaned_metadata)
+                texts.append(doc.page_content)
             
-            # Add to collection
-            self.collection.add(
-                ids=ids,
-                documents=texts,
-                metadatas=metadatas
-            )
+            # Process in batches of 5000 (safe number below ChromaDB's limit)
+            batch_size = 5000
+            for i in range(0, len(ids), batch_size):
+                batch_ids = ids[i:i + batch_size]
+                batch_texts = texts[i:i + batch_size]
+                batch_metadatas = cleaned_metadatas[i:i + batch_size]
+                
+                # Add batch to collection
+                self.collection.add(
+                    ids=batch_ids,
+                    documents=batch_texts,
+                    metadatas=batch_metadatas
+                )
+                print(f"Added batch {i//batch_size + 1} of {(len(ids) + batch_size - 1)//batch_size}")
+            
         except Exception as e:
             print(f"Error adding documents to vector store: {str(e)}")
     
@@ -50,11 +72,18 @@ class VectorStoreManager:
     ) -> List[Document]:
         """Search for similar documents."""
         try:
+            # Convert filter criteria to ChromaDB's where clause format
+            where = None
+            if filter_criteria:
+                where = {}
+                for key, value in filter_criteria.items():
+                    where[key] = {"$eq": value}
+            
             # Perform the search
             results = self.collection.query(
                 query_texts=[query],
                 n_results=k,
-                where=filter_criteria
+                where=where
             )
             
             # Convert results to Document objects
@@ -84,6 +113,7 @@ class VectorStoreManager:
         except Exception as e:
             print(f"Error retrieving document: {str(e)}")
             return None
+
     
     def update_document(self, doc_id: str, document: Document) -> bool:
         """Update an existing document."""
