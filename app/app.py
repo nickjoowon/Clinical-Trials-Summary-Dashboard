@@ -214,25 +214,23 @@ def create_top_conditions_chart(docs):
         content = doc.page_content.lower()
         # Look for conditions in different possible formats
         if 'conditions:' in content:
-            # Try to extract conditions section
             try:
-                conditions_section = content.split('conditions:')[1].split('\n')[0]
-                # Split by commas and clean up
-                for condition in conditions_section.split(','):
-                    condition = condition.strip()
-                    if condition and condition != 'n/a':
-                        conditions.append(condition)
+                after = content.split('conditions:')[1]
+                # Split by lines, take the first non-empty line
+                lines = [line.strip() for line in after.split('\n') if line.strip()]
+                if lines:
+                    for condition in lines[0].split(','):
+                        condition = condition.strip()
+                        if condition and condition != 'n/a':
+                            conditions.append(condition)
             except:
                 pass
-        
         # Also check metadata for conditions
         if 'conditions' in doc.metadata:
             conditions.extend(doc.metadata['conditions'])
-    
     # Remove duplicates and clean up conditions
     conditions = list(set(conditions))
     conditions = [c.strip() for c in conditions if c and c.lower() != 'n/a']
-    
     # Categorize conditions into topics
     topic_counts = Counter()
     for condition in conditions:
@@ -245,31 +243,24 @@ def create_top_conditions_chart(docs):
                 break
         if not categorized:
             topic_counts['Other'] += 1
-    
     # Create DataFrame
     df = pd.DataFrame({
         'Topic': list(topic_counts.keys()),
         'Count': list(topic_counts.values())
     }).sort_values('Count', ascending=False)  # Sort by count in descending order
-    
     # Create figure and axis
     fig, ax = plt.subplots(figsize=(10, 6))
-    
     # Create bar plot
     sns.barplot(data=df, x='Topic', y='Count', palette='rocket', ax=ax)
-    
     # Customize the plot
     ax.set_title("Top Topics Being Studied", pad=20)
     ax.set_xlabel("Topic")
     ax.set_ylabel("Number of Trials")
-    
     # Rotate x-axis labels for better readability
     plt.xticks(rotation=45, ha='right')
-    
     # Add value labels on top of bars
     for i, v in enumerate(df['Count']):
         ax.text(i, v, str(v), ha='center', va='bottom')
-    
     plt.tight_layout()
     return fig
 
