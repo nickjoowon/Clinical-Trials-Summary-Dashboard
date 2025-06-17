@@ -4,43 +4,51 @@ import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-def fetch_clinical_trials(max_results: int = 100) -> Dict[str, Any]:
-    """Fetch clinical trials data from ClinicalTrials.gov API v2"""
+def fetch_clinical_trials(start_date: str = "2024-01-01", max_results: int = None) -> Dict[str, Any]:
+    """
+    Fetch all clinical trials from ClinicalTrials.gov API v2 from start_date onwards, handling pagination with nextPageToken.
+    Args:
+        start_date (str): Earliest LastUpdatePostDate to fetch (format: YYYY-MM-DD).
+        max_results (int or None): Maximum number of results to fetch. If None, fetch all available.
+    Returns:
+        Dict[str, Any]: All studies fetched.
+    """
     base_url = "https://clinicaltrials.gov/api/v2/studies"
-    
-    # Define the fields we want to retrieve - focusing on text-rich fields for LLM processing
     fields = [
-        "IdentificationModule",
-        "StatusModule",
-        "SponsorCollaboratorsModule",
-        "ConditionsModule",
-        "ArmsInterventionsModule",
-        "EligibilityModule",
-        "DescriptionModule",
-        "DesignModule",
-        "OutcomesModule"
+        "IdentificationModule", "StatusModule", "SponsorCollaboratorsModule",
+        "ConditionsModule", "ArmsInterventionsModule", "EligibilityModule",
+        "DescriptionModule", "DesignModule", "OutcomesModule"
     ]
-    
-    params = {
-        "query.term": "AREA[LastUpdatePostDate]RANGE[2023-01-01,MAX]",  # Recent trials
-        "fields": ",".join(fields),
-        "pageSize": min(max_results, 1000),  # API limits pageSize to 1000
-        "format": "json",
-        "markupFormat": "markdown",
-        "sort": ["LastUpdatePostDate:desc"]  # Get most recent trials first
-    }
-    
-    response = requests.get(base_url, params=params)
-    
-    if response.status_code != 200:
-        raise Exception(f"API request failed with status code {response.status_code}")
-        
-    try:
-        return response.json()
-    except json.JSONDecodeError as e:
-        print(f"Error decoding JSON: {str(e)}")
-        print(f"Response content: {response.text}")
-        raise
+    all_studies = []
+    page_size = 1000  # API max
+    next_page_token = None
+
+    while True:
+        params = {
+            "query.term": f"AREA[LastUpdatePostDate]RANGE[{start_date},MAX]",
+            "fields": ",".join(fields),
+            "pageSize": page_size,
+            "format": "json",
+            "markupFormat": "markdown",
+            "sort": ["LastUpdatePostDate:desc"]
+        }
+        if next_page_token:
+            params["pageToken"] = next_page_token
+
+        response = requests.get(base_url, params=params)
+        if response.status_code != 200:
+            raise Exception(f"API request failed with status code {response.status_code}")
+        data = response.json()
+        studies = data.get('studies', [])
+        all_studies.extend(studies)
+        if max_results and len(all_studies) >= max_results:
+            all_studies = all_studies[:max_results]
+            break
+        next_page_token = data.get("nextPageToken")
+        if not next_page_token or not studies:
+            break
+
+    return {"studies": all_studies}
 
 def preprocess_trial_data(trials_data):
     """Preprocess the clinical trials data for LLM processing"""

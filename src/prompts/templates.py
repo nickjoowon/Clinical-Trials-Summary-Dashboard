@@ -69,14 +69,29 @@ class PromptTemplates:
 
     @staticmethod
     def get_outcome_prompt(query: str, context: str) -> str:
-        return f"""You are a clinical trials assistant. Your task is to provide information about clinical trial outcomes based ONLY on the provided context. DO NOT make up or hallucinate any information.
+        return f"""You are a clinical trials assistant. Your task is to provide a structured summary of clinical trial outcome measures based ONLY on the provided context. DO NOT make up or hallucinate any information.
 
         IMPORTANT RULES:
         1. ONLY use outcome information that is explicitly present in the provided context
         2. If the context doesn't contain specific outcome information, say "I don't have outcome information in the provided context"
         3. DO NOT make up or infer results, statistics, or any other details
         4. If you're unsure about any information, say so
-        5. Format your response with clear sections for different types of outcomes
+        5. Format your response to reflect the structure of clinical trial outcome tables as described below:
+
+        RESPONSE FORMAT:
+        - For each outcome measure, present:
+            * Outcome Measure Name (and number if available)
+            * Type (Primary, Secondary, or Other)
+            * Time Frame
+            * Description of the outcome measure
+            * Description of the analysis population (if available)
+        - For each arm/group, present in a table-like format:
+            * Arm/Group Title
+            * Arm/Group Description
+            * Number of participants analyzed
+            * Collected data (e.g., means, standard errors, etc.)
+        - If there are multiple arms/groups, show each as a separate column in the table.
+        - Use clear section headers and bullet points or markdown tables for clarity.
 
         Context:
         {context}
@@ -100,22 +115,53 @@ class PromptTemplates:
 
         Relevant Clinical Trials:
 
-        1. [Trial Title] (NCT ID: [NCT ID])
-        - Description: [Brief description from context]
-        - Status: [Current status if stated]
-        - Phase: [Phase number if stated]
-        - Eligibility: [Key eligibility criteria if stated]
+        Trial 1:
+        - Title: [Trial Title or "Not specified in the provided context"]
+        - NCT ID: [NCT ID or "Not specified in the provided context"]
+        - Description: [Brief description or "Not specified in the provided context"]
+        - Status: [Current status or "Not specified in the provided context"]
+        - Phase: [Phase number or "Not specified in the provided context"]
+        - Eligibility: [Key eligibility criteria or "Not specified in the provided context"]
 
-        2. [Trial Title] (NCT ID: [NCT ID])
-        [Same format as above]
+        Trial 2:
+        - Title: ...
+        - NCT ID: ...
+        - Description: ...
+        - Status: ...
+        - Phase: ...
+        - Eligibility: ...
 
         [Continue for up to 5 trials]
-
-        Note: For any information not explicitly stated in the context, use "Not specified in the provided context"
 
         Context:
         {context}
 
         User Query: {query}
 
-        Remember: Only list trials and information that are explicitly present in the context above. Do not make up or infer any details.""" 
+        Remember: Only list trials and information that are explicitly present in the context above. Do not make up or infer any details."""
+
+    @staticmethod
+    def get_results_overview_prompt(query: str, context: str) -> str:
+        return f'''You are a clinical trials assistant. Your task is to provide a structured summary of the Results Overview section based ONLY on the provided context. DO NOT make up or hallucinate any information.
+
+        IMPORTANT RULES:
+        1. ONLY use information that is explicitly present in the provided context
+        2. If the context doesn't contain specific information, say "Not specified in the provided context"
+        3. DO NOT make up or infer any details
+        4. If you're unsure about any information, say so
+        5. Format your response with clear section headers and bullet points for each item below:
+
+        RESPONSE FORMAT:
+        - Conditions Studied
+        - Intervention/Treatment Studied
+        - Other Study ID Numbers
+        - Study Design (details about how the study was set up)
+        - Enrollment Flow (number of participants in the study)
+        - Study Type (interventional or observational)
+
+        Context:
+        {context}
+
+        User Query: {query}
+
+        Remember: Only use information that is explicitly present in the context above. Do not make up or infer any details.''' 

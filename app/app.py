@@ -7,6 +7,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from collections import Counter
 from datetime import datetime
+from dotenv import load_dotenv
+from typing import Dict, Any
+
+# Load environment variables
+load_dotenv()
 
 # Get the absolute path of the project root directory
 current_file = Path(__file__).resolve()
@@ -30,8 +35,8 @@ plt.style.use("seaborn-v0_8")
 
 def get_trials_data(rag_manager):
     """Get all trials data from the vector store."""
-    all_docs = rag_manager.vector_store.similarity_search("", k=1000)
-    return all_docs
+    # Fetch all documents from the vector store 
+    return rag_manager.vector_store.similarity_search("")
 
 def create_trials_per_year_chart(docs):
     """Create a bar chart showing the number of clinical trials per year."""
@@ -264,44 +269,57 @@ def create_top_conditions_chart(docs):
     plt.tight_layout()
     return fig
 
-def initialize_rag_system():
+def initialize_rag_system(start_date="2024-01-01", max_results=None):
     """Initialize the RAG system with clinical trials data."""
     try:
         # Create RAG manager
         rag_manager = RAGManager()
-        
         # Check if we already have data in the vector store
         db_stats = rag_manager.get_database_stats()
-        
         if db_stats.get('total_documents', 0) > 0:
             st.success("Using existing clinical trials data from local storage.")
             return rag_manager
-        
         # If no existing data, fetch and process new trials
         else:
             with st.spinner("Fetching clinical trials data..."):
-                trials_data = fetch_clinical_trials(max_results=500)
+                trials_data = fetch_clinical_trials(start_date=start_date, max_results=max_results)
                 processed_trials = preprocess_trial_data(trials_data)
-        
             # Add trials to RAG system
             with st.spinner("Processing trials for RAG system..."):
                 rag_manager.add_trials(processed_trials)
                 st.success("Successfully loaded and processed clinical trials data.")
-        
         return rag_manager
     except Exception as e:
         st.error(f"Error initializing RAG system: {str(e)}")
         return None
 
+# Sidebar options for data ingestion
+st.sidebar.header("Data Ingestion Settings")
+default_start_date = "2024-01-01"
+default_max_results = None
+start_date = st.sidebar.text_input("Start date (YYYY-MM-DD)", value=default_start_date)
+max_results_input = st.sidebar.text_input("Max results (leave blank for all)", value="")
+max_results = int(max_results_input) if max_results_input.strip().isdigit() else None
+
 # Initialize session state
 if 'rag_manager' not in st.session_state:
-    st.session_state.rag_manager = initialize_rag_system()
+    st.session_state.rag_manager = initialize_rag_system(start_date=start_date, max_results=max_results)
     if st.session_state.rag_manager is None:
-        st.error("Failed to initialize RAG system. Please check if Ollama is running and try again.")
+        st.error("Failed to initialize RAG system.")
 
 def generate_response(query: str) -> str:
     """Generate a response using the RAG system."""
     try:
+        # Get structured query
+        structured_query = st.session_state.rag_manager.query_analyzer.invoke(
+            {"question": query}
+        )
+        
+        # Display the structured query for transparency
+        st.write("Search Parameters:")
+        st.json(structured_query.dict())
+        
+        # Get and return response
         response = st.session_state.rag_manager.get_response(query)
         return response
     except Exception as e:
@@ -359,7 +377,22 @@ def main():
         # Search input
         search_query = st.text_input("Enter your search query")
         if search_query:
-            results = st.session_state.rag_manager.vector_store.similarity_search(search_query)
+            # Get structured query
+            structured_query = st.session_state.rag_manager.query_analyzer.invoke(
+                {"question": search_query}
+            )
+            
+            # Display the structured query for transparency
+            st.write("Search Parameters:")
+            st.json(structured_query.dict())
+            
+            # Get and display results
+            results = st.session_state.rag_manager.vector_store.similarity_search(
+                structured_query.content_search,
+                k=5,
+                filter=structured_query.dict()
+            )
+            
             for i, result in enumerate(results, 1):
                 st.markdown(f"**Result {i}:**")
                 st.markdown(result.page_content)
