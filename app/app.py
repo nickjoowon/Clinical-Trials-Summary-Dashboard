@@ -35,6 +35,9 @@ plt.style.use("seaborn-v0_8")
 
 def get_trials_data(rag_manager):
     """Get all trials data from the vector store."""
+    if rag_manager is None:
+        st.error("RAG system is not properly initialized. Please check your OpenAI API key and try again.")
+        return []
     # Fetch all documents from the vector store 
     return rag_manager.vector_store.similarity_search("")
 
@@ -82,7 +85,7 @@ def create_trials_per_year_chart(docs):
     return fig
 
 def create_phase_distribution_chart(docs):
-    """Create a pie chart showing the distribution of trials by phase."""
+    """Create a bar chart showing the distribution of trials by phase."""
     # Extract phases
     phases = []
     for doc in docs:
@@ -91,42 +94,38 @@ def create_phase_distribution_chart(docs):
             # Split multiple phases if present
             for p in phase.split(','):
                 phases.append(p.strip())
-    
     # Count phases
     phase_counts = Counter(phases)
-    
     # Define phase order
     phase_order = {
+        'EARLY_PHASE1': 0,
         'PHASE1': 1,
         'PHASE2': 2,
         'PHASE3': 3,
         'PHASE4': 4,
-        'EARLY_PHASE1': 0,
         'N/A': 5
     }
-    
     # Sort phases
     sorted_phases = sorted(
         phase_counts.items(),
         key=lambda x: phase_order.get(x[0], 999)  # Put unknown phases at the end
     )
-    
+    # Create DataFrame
+    df = pd.DataFrame({
+        'Phase': [phase for phase, _ in sorted_phases],
+        'Count': [count for _, count in sorted_phases]
+    })
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    # Create pie chart with sorted data
-    ax.pie(
-        [count for _, count in sorted_phases],
-        labels=[phase for phase, _ in sorted_phases],
-        autopct='%1.1f%%',
-        colors=sns.color_palette('Set3'),
-        startangle=90
-    )
-    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    # Create bar plot
+    sns.barplot(data=df, x='Phase', y='Count', palette='Set3', ax=ax)
     # Customize the plot
     ax.set_title("Distribution of Trials by Phase", pad=20)
-    plt.axis('equal')
-    
+    ax.set_xlabel("Phase")
+    ax.set_ylabel("Number of Trials")
+    # Add value labels on top of bars
+    for i, v in enumerate(df['Count']):
+        ax.text(i, v, str(v), ha='center', va='bottom')
     plt.tight_layout()
     return fig
 
@@ -296,10 +295,11 @@ def initialize_rag_system(start_date="2024-01-01", max_results=None):
 # Sidebar options for data ingestion
 st.sidebar.header("Data Ingestion Settings")
 default_start_date = "2024-01-01"
-default_max_results = None
+default_max_results = 300
 start_date = st.sidebar.text_input("Start date (YYYY-MM-DD)", value=default_start_date)
 max_results_input = st.sidebar.text_input("Max results (leave blank for all)", value="")
-max_results = int(max_results_input) if max_results_input.strip().isdigit() else None
+max_results = 300
+#max_results = int(max_results_input) if max_results_input.strip().isdigit() else None
 
 # Initialize session state
 if 'rag_manager' not in st.session_state:
@@ -399,31 +399,74 @@ def main():
                 st.markdown("---")
     
     elif page == "Statistics":
-        st.header("Clinical Trials Analysis")
+        st.header("Clinical Trials Statistics")
+        
+        # Check if RAG manager is properly initialized
+        if st.session_state.rag_manager is None:
+            st.error("RAG system is not properly initialized. Please check your OpenAI API key and try again.")
+            return
         
         # Get all trials data
         docs = get_trials_data(st.session_state.rag_manager)
         
-        # Create a selection menu for graphs
-        graph_options = {
-            "Trials by Year": create_trials_per_year_chart,
-            "Phase Distribution": create_phase_distribution_chart,
-            "Study Types": create_study_type_chart,
-            "Trial Status": create_status_distribution_chart,
-            "Top Conditions": create_top_conditions_chart
-        }
+        if not docs:  # If docs is empty
+            st.warning("No clinical trials data available. Please ensure the system is properly initialized.")
+            return
         
-        selected_graph = st.selectbox(
-            "Select a visualization:",
-            options=list(graph_options.keys()),
-            format_func=lambda x: x
-        )
+        # --- Year Filter ---
+        # Extract all years from the docs
+        years = []
+        for doc in docs:
+            start_date = doc.metadata.get('start_date')
+            if start_date:
+                try:
+                    year = datetime.strptime(start_date, '%Y-%m-%d').year
+                    years.append(year)
+                except (ValueError, TypeError):
+                    continue
+        years = sorted(set(years))
+        year_options = ['All Years'] + [str(y) for y in years]
+        selected_year = st.selectbox('Filter by Year', options=year_options)
+        # Filter docs if a specific year is selected
+        if selected_year != 'All Years':
+            docs = [doc for doc in docs if doc.metadata.get('start_date', '').startswith(selected_year)]
+        # --- End Year Filter ---
         
-        # Display the selected graph
-        st.subheader(selected_graph)
-        fig = graph_options[selected_graph](docs)
-        st.pyplot(fig)
-        plt.close(fig)
+        # First row - two columns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("### Trials by Year")
+            fig_year = create_trials_per_year_chart(docs)
+            st.pyplot(fig_year)
+            plt.close(fig_year)
+        
+        with col2:
+            st.write("### Phase Distribution")
+            fig_phase = create_phase_distribution_chart(docs)
+            st.pyplot(fig_phase)
+            plt.close(fig_phase)
+        
+        # Second row - two columns
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            st.write("### Study Types")
+            fig_type = create_study_type_chart(docs)
+            st.pyplot(fig_type)
+            plt.close(fig_type)
+        
+        with col4:
+            st.write("### Trial Status")
+            fig_status = create_status_distribution_chart(docs)
+            st.pyplot(fig_status)
+            plt.close(fig_status)
+        
+        # Third row - single column for the conditions chart (it's usually wider)
+        st.write("### Top Conditions Being Studied")
+        fig_conditions = create_top_conditions_chart(docs)
+        st.pyplot(fig_conditions)
+        plt.close(fig_conditions)
 
 if __name__ == "__main__":
     main()
