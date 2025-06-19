@@ -268,44 +268,64 @@ def create_top_conditions_chart(docs):
     plt.tight_layout()
     return fig
 
-def initialize_rag_system(start_date="2024-01-01", max_results=None):
+def initialize_rag_system():
     """Initialize the RAG system with clinical trials data."""
     try:
         # Create RAG manager
         rag_manager = RAGManager()
+        
         # Check if we already have data in the vector store
         db_stats = rag_manager.get_database_stats()
+        
         if db_stats.get('total_documents', 0) > 0:
-            st.success("Using existing clinical trials data from local storage.")
+            st.success(f"Using existing clinical trials data: {db_stats.get('total_documents', 0)} documents loaded.")
             return rag_manager
-        # If no existing data, fetch and process new trials
+        
+        # If no existing data, show instructions
         else:
-            with st.spinner("Fetching clinical trials data..."):
-                trials_data = fetch_clinical_trials(start_date=start_date, max_results=max_results)
-                processed_trials = preprocess_trial_data(trials_data)
-            # Add trials to RAG system
-            with st.spinner("Processing trials for RAG system..."):
-                rag_manager.add_trials(processed_trials)
-                st.success("Successfully loaded and processed clinical trials data.")
-        return rag_manager
+            st.warning("No clinical trials data found in the vector store.")
+            st.info("""
+            To load clinical trials data, run the data pipeline first:
+            
+            ```bash
+            python data_pipeline.py --start-date 2024-01-01 --max-results 10000
+            ```
+            
+            Or for all trials from 2024:
+            ```bash
+            python data_pipeline.py --start-date 2024-01-01
+            ```
+            
+            Then restart this application.
+            """)
+            
+            # Option to run pipeline in background (optional)
+            if st.button("Run Data Pipeline Now (This may take a while)"):
+                with st.spinner("Running data pipeline..."):
+                    try:
+                        from data_pipeline import ClinicalTrialsDataPipeline
+                        pipeline = ClinicalTrialsDataPipeline()
+                        success = pipeline.run_pipeline(start_date="2024-01-01", max_results=1000)
+                        if success:
+                            st.success("Data pipeline completed! Refreshing...")
+                            st.rerun()
+                        else:
+                            st.error("Data pipeline failed. Check the logs.")
+                    except Exception as e:
+                        st.error(f"Error running pipeline: {str(e)}")
+            
+            return None
+        
     except Exception as e:
         st.error(f"Error initializing RAG system: {str(e)}")
         return None
 
-# Sidebar options for data ingestion
-st.sidebar.header("Data Ingestion Settings")
-default_start_date = "2024-01-01"
-default_max_results = 300
-start_date = st.sidebar.text_input("Start date (YYYY-MM-DD)", value=default_start_date)
-max_results_input = st.sidebar.text_input("Max results (leave blank for all)", value="")
-max_results = 300
-#max_results = int(max_results_input) if max_results_input.strip().isdigit() else None
-
+# Remove the sidebar data ingestion controls since we're using the pipeline
 # Initialize session state
 if 'rag_manager' not in st.session_state:
-    st.session_state.rag_manager = initialize_rag_system(start_date=start_date, max_results=max_results)
+    st.session_state.rag_manager = initialize_rag_system()
     if st.session_state.rag_manager is None:
-        st.error("Failed to initialize RAG system.")
+        st.error("Failed to initialize RAG system. Please run the data pipeline first.")
 
 def generate_response(query: str) -> str:
     """Generate a response using the RAG system."""
