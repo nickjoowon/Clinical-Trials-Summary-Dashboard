@@ -16,8 +16,9 @@ import json
 from dotenv import load_dotenv
 load_dotenv()
 
-# Add project root to path
-project_root = Path(__file__).parent
+# Get the absolute path of the project root directory (same as app.py)
+current_file = Path(__file__).resolve()
+project_root = current_file.parent  # data_pipeline.py is already in root
 sys.path.insert(0, str(project_root))
 
 from src.rag.rag_manager import RAGManager
@@ -192,6 +193,12 @@ class ClinicalTrialsDataPipeline:
 def main():
     """Main function to run the data pipeline."""
     import argparse
+    
+    # Debug information
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Project root: {project_root}")
+    print(f"Python path: {sys.path[:3]}")  # Show first 3 entries
+    print(f"OPENAI_API_KEY set: {'Yes' if os.getenv('OPENAI_API_KEY') else 'No'}")
     
     parser = argparse.ArgumentParser(description="Clinical Trials Data Pipeline")
     parser.add_argument("--start-date", default="2024-01-01", 
