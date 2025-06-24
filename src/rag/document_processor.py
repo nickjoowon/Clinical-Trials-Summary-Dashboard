@@ -133,7 +133,8 @@ class ClinicalTrialProcessor:
                     'status': trial_data.get('status', 'N/A'),
                     'phase': phase_str,  # Now a string instead of a list
                     'conditions': conditions_str,  # Now a string instead of a list
-                    'study_type': trial_data.get('study_type', 'N/A')
+                    'study_type': trial_data.get('study_type', 'N/A'),
+                    'start_date': trial_data.get('start_date', 'N/A'),
                 }
             )
             documents.append(doc)

@@ -38,21 +38,39 @@ def get_trials_data(rag_manager):
     if rag_manager is None:
         st.error("RAG system is not properly initialized. Please check your OpenAI API key and try again.")
         return []
-    # Fetch all documents from the vector store 
-    return rag_manager.vector_store.similarity_search("")
+    # Fetch all documents from the vector store by using a large k value
+    # This will retrieve up to 1000 documents (or all if less than 1000)
+    return rag_manager.vector_store.similarity_search("", k=1000)
 
 def create_trials_per_year_chart(docs):
     """Create a bar chart showing the number of clinical trials per year."""
-    # Extract years from start dates
+    # Extract years from start dates in the metadata
     years = []
     for doc in docs:
         start_date = doc.metadata.get('start_date')
-        if start_date:
+        if start_date and start_date != 'N/A':
             try:
-                year = datetime.strptime(start_date, '%Y-%m-%d').year
-                years.append(year)
-            except (ValueError, TypeError):
+                # Try different date formats
+                for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%Y']:
+                    try:
+                        year = datetime.strptime(start_date, fmt).year
+                        years.append(year)
+                        break
+                    except ValueError:
+                        continue
+            except Exception as e:
                 continue
+    
+    if not years:
+        # Create empty chart with message
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.text(0.5, 0.5, 'No valid start dates found in the data', 
+                ha='center', va='center', transform=ax.transAxes, fontsize=14)
+        ax.set_title("Number of Clinical Trials by Year", pad=20)
+        ax.set_xlabel("Year")
+        ax.set_ylabel("Number of Trials")
+        plt.tight_layout()
+        return fig
     
     # Count trials per year
     year_counts = Counter(years)
@@ -67,7 +85,7 @@ def create_trials_per_year_chart(docs):
     fig, ax = plt.subplots(figsize=(12, 6))
     
     # Create bar plot
-    sns.barplot(data=df, x='Year', y='Number of Trials', palette='viridis', ax=ax)
+    sns.barplot(data=df, x='Year', y='Number of Trials', palette='flare', ax=ax)
     
     # Customize the plot
     ax.set_title("Number of Clinical Trials by Year", pad=20)
@@ -116,9 +134,9 @@ def create_phase_distribution_chart(docs):
         'Count': [count for _, count in sorted_phases]
     })
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     # Create bar plot
-    sns.barplot(data=df, x='Phase', y='Count', palette='Set3', ax=ax)
+    sns.barplot(data=df, x='Phase', y='Count', palette='crest', ax=ax)
     # Customize the plot
     ax.set_title("Distribution of Trials by Phase", pad=20)
     ax.set_xlabel("Phase")
@@ -144,10 +162,10 @@ def create_study_type_chart(docs):
     }).sort_values('Count', ascending=True)
     
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     
     # Create horizontal bar plot
-    sns.barplot(data=df, y='Study Type', x='Count', palette='muted', ax=ax)
+    sns.barplot(data=df, y='Study Type', x='Count', palette='Set2', ax=ax)
     
     # Customize the plot
     ax.set_title("Distribution of Study Types", pad=20)
@@ -176,10 +194,10 @@ def create_status_distribution_chart(docs):
     }).sort_values('Count', ascending=False)  # Sort by count in descending order
     
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     
     # Create bar plot
-    sns.barplot(data=df, x='Status', y='Count', palette='Set2', ax=ax)
+    sns.barplot(data=df, x='Status', y='Count', palette='pastel', ax=ax)
     
     # Customize the plot
     ax.set_title("Distribution of Trial Statuses", pad=20)
@@ -198,73 +216,113 @@ def create_status_distribution_chart(docs):
 
 def create_top_conditions_chart(docs):
     """Create a vertical bar chart showing the top topics being studied."""
-    # Define topic categories and their keywords
-    topic_categories = {
-        'Cancer': ['cancer', 'tumor', 'carcinoma', 'leukemia', 'lymphoma', 'melanoma', 'sarcoma'],
-        'Cardiovascular': ['heart', 'cardiac', 'cardiovascular', 'hypertension', 'blood pressure'],
-        'Neurological': ['brain', 'neurological', 'stroke', 'parkinson', 'alzheimer', 'dementia'],
-        'Respiratory': ['lung', 'respiratory', 'asthma', 'copd', 'pneumonia'],
-        'Diabetes': ['diabetes', 'diabetic', 'glucose', 'insulin'],
-        'Autoimmune': ['autoimmune', 'arthritis', 'lupus', 'multiple sclerosis', 'rheumatoid'],
-        'Infectious Disease': ['infection', 'viral', 'bacterial', 'hiv', 'aids', 'covid'],
-        'Mental Health': ['depression', 'anxiety', 'mental health', 'psychiatric', 'bipolar'],
-        'Pediatric': ['pediatric', 'child', 'infant', 'neonatal'],
-        'Geriatric': ['geriatric', 'elderly', 'aging', 'senior']
-    }
-    
-    # Extract conditions from the page content
+    # Extract conditions from the document content more effectively
     conditions = []
     for doc in docs:
-        content = doc.page_content.lower()
-        # Look for conditions in different possible formats
-        if 'conditions:' in content:
-            try:
-                after = content.split('conditions:')[1]
-                # Split by lines, take the first non-empty line
-                lines = [line.strip() for line in after.split('\n') if line.strip()]
-                if lines:
-                    for condition in lines[0].split(','):
-                        condition = condition.strip()
-                        if condition and condition != 'n/a':
-                            conditions.append(condition)
-            except:
-                pass
-        # Also check metadata for conditions
+        # First try to get conditions from metadata
         if 'conditions' in doc.metadata:
-            conditions.extend(doc.metadata['conditions'])
-    # Remove duplicates and clean up conditions
-    conditions = list(set(conditions))
-    conditions = [c.strip() for c in conditions if c and c.lower() != 'n/a']
-    # Categorize conditions into topics
-    topic_counts = Counter()
-    for condition in conditions:
-        condition_lower = condition.lower()
-        categorized = False
-        for topic, keywords in topic_categories.items():
-            if any(keyword in condition_lower for keyword in keywords):
-                topic_counts[topic] += 1
-                categorized = True
-                break
-        if not categorized:
-            topic_counts['Other'] += 1
+            conditions_str = doc.metadata['conditions']
+            if conditions_str and conditions_str != 'N/A':
+                # Split by comma and clean up
+                for condition in conditions_str.split(','):
+                    condition = condition.strip()
+                    if condition and condition.lower() != 'n/a':
+                        conditions.append(condition)
+        
+        # If no conditions in metadata, try to extract from content
+        if not conditions:
+            content = doc.page_content
+            
+            # Look for the conditions section in the structured text
+            if 'Conditions:' in content:
+                try:
+                    # Find the conditions section and get the next line
+                    lines = content.split('\n')
+                    for i, line in enumerate(lines):
+                        if 'Conditions:' in line:
+                            # Get the next non-empty line after "Conditions:"
+                            for j in range(i + 1, min(i + 3, len(lines))):
+                                next_line = lines[j].strip()
+                                if next_line and next_line != 'N/A':
+                                    # Split by comma and clean up
+                                    for condition in next_line.split(','):
+                                        condition = condition.strip()
+                                        if condition and condition.lower() != 'n/a' and len(condition) > 2:
+                                            conditions.append(condition)
+                                    break
+                            break
+                except Exception as e:
+                    continue
+    
+    # Clean up and count conditions
+    conditions = [c.strip() for c in conditions if c and len(c) > 2 and c.lower() != 'n/a']
+    
+    # If still no conditions, try to extract from the content more broadly
+    if not conditions:
+        for doc in docs:
+            content = doc.page_content
+            
+            # Look for conditions in the structured format from process_trial
+            if 'Conditions:' in content:
+                try:
+                    # Find the line that contains conditions
+                    lines = content.split('\n')
+                    for line in lines:
+                        if line.strip().startswith('Conditions:'):
+                            # Extract everything after "Conditions:"
+                            condition_text = line.split('Conditions:')[1].strip()
+                            if condition_text and condition_text != 'N/A':
+                                # Split by comma and clean up
+                                for condition in condition_text.split(','):
+                                    condition = condition.strip()
+                                    if condition and condition.lower() != 'n/a' and len(condition) > 2:
+                                        conditions.append(condition)
+                            break
+                except Exception as e:
+                    continue
+    
+    # If still no conditions, create a placeholder
+    if not conditions:
+        # Create empty chart with message
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.text(0.5, 0.5, 'No condition data found in the trials', 
+                ha='center', va='center', transform=ax.transAxes, fontsize=14)
+        ax.set_title("Top Conditions Being Studied", pad=20)
+        ax.set_xlabel("Condition")
+        ax.set_ylabel("Number of Trials")
+        plt.tight_layout()
+        return fig
+    
+    # Count conditions and get top ones
+    condition_counts = Counter(conditions)
+    
+    # Get top 10 conditions
+    top_conditions = condition_counts.most_common(10)
+    
     # Create DataFrame
     df = pd.DataFrame({
-        'Topic': list(topic_counts.keys()),
-        'Count': list(topic_counts.values())
-    }).sort_values('Count', ascending=False)  # Sort by count in descending order
+        'Condition': [condition for condition, _ in top_conditions],
+        'Count': [count for _, count in top_conditions]
+    })
+    
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
     # Create bar plot
-    sns.barplot(data=df, x='Topic', y='Count', palette='rocket', ax=ax)
+    sns.barplot(data=df, x='Condition', y='Count', palette='dark', ax=ax)
+    
     # Customize the plot
-    ax.set_title("Top Topics Being Studied", pad=20)
-    ax.set_xlabel("Topic")
+    ax.set_title("Top Conditions Being Studied", pad=20)
+    ax.set_xlabel("Condition")
     ax.set_ylabel("Number of Trials")
+    
     # Rotate x-axis labels for better readability
     plt.xticks(rotation=45, ha='right')
+    
     # Add value labels on top of bars
     for i, v in enumerate(df['Count']):
         ax.text(i, v, str(v), ha='center', va='bottom')
+    
     plt.tight_layout()
     return fig
 
@@ -419,7 +477,7 @@ def main():
                 st.markdown("---")
     
     elif page == "Statistics":
-        st.header("Clinical Trials Statistics")
+        st.header("Statistics")
         
         # Check if RAG manager is properly initialized
         if st.session_state.rag_manager is None:
@@ -427,66 +485,105 @@ def main():
             return
         
         # Get all trials data
-        docs = get_trials_data(st.session_state.rag_manager)
+        all_docs = get_trials_data(st.session_state.rag_manager)
         
-        if not docs:  # If docs is empty
+        # Debug information
+        st.info(f"Retrieved {len(all_docs)} documents from the database")
+        
+        # Show database stats
+        db_stats = st.session_state.rag_manager.get_database_stats()
+        st.info(f"Database contains {db_stats.get('total_documents', 0)} total documents")
+        
+        if not all_docs:  # If docs is empty
             st.warning("No clinical trials data available. Please ensure the system is properly initialized.")
             return
         
-        # --- Year Filter ---
+        # --- Year Filter above charts ---
+        st.markdown("---")
+        
         # Extract all years from the docs
         years = []
-        for doc in docs:
+        for doc in all_docs:
             start_date = doc.metadata.get('start_date')
-            if start_date:
+            if start_date and start_date != 'N/A':
                 try:
-                    year = datetime.strptime(start_date, '%Y-%m-%d').year
-                    years.append(year)
-                except (ValueError, TypeError):
+                    # Try different date formats
+                    for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%Y']:
+                        try:
+                            year = datetime.strptime(start_date, fmt).year
+                            years.append(year)
+                            break
+                        except ValueError:
+                            continue
+                except Exception as e:
                     continue
+        
         years = sorted(set(years))
         year_options = ['All Years'] + [str(y) for y in years]
-        selected_year = st.selectbox('Filter by Year', options=year_options)
+        
+        selected_year = st.selectbox(
+            'Filter by Year', 
+            options=year_options,
+            help="Select a specific year to filter all charts, or 'All Years' to show all data"
+        )
+        
         # Filter docs if a specific year is selected
         if selected_year != 'All Years':
-            docs = [doc for doc in docs if doc.metadata.get('start_date', '').startswith(selected_year)]
-        # --- End Year Filter ---
+            filtered_docs = []
+            for doc in all_docs:
+                start_date = doc.metadata.get('start_date')
+                if start_date and start_date != 'N/A':
+                    try:
+                        for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%Y']:
+                            try:
+                                year = datetime.strptime(start_date, fmt).year
+                                if str(year) == selected_year:
+                                    filtered_docs.append(doc)
+                                break
+                            except ValueError:
+                                continue
+                    except Exception as e:
+                        continue
+            st.success(f"Showing data for {selected_year}: {len(filtered_docs)} trials")
+        else:
+            filtered_docs = all_docs
+            st.info(f"Showing all years: {len(filtered_docs)} trials")
         
-        # First row - two columns
-        col1, col2 = st.columns(2)
+        # Show filter summary
+        st.markdown(f"### 📈 Statistics for {selected_year}")
+        st.markdown(f"**Total trials in view:** {len(filtered_docs)}")
         
-        with col1:
-            st.write("### Trials by Year")
-            fig_year = create_trials_per_year_chart(docs)
+        # Show Trials by Year chart only when "All Years" is selected
+        if selected_year == 'All Years':
+            st.write("### 📊 Trials by Year")
+            fig_year = create_trials_per_year_chart(filtered_docs)
             st.pyplot(fig_year)
             plt.close(fig_year)
         
-        with col2:
+        # Two columns with charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
             st.write("### Phase Distribution")
-            fig_phase = create_phase_distribution_chart(docs)
+            fig_phase = create_phase_distribution_chart(filtered_docs)
             st.pyplot(fig_phase)
             plt.close(fig_phase)
-        
-        # Second row - two columns
-        col3, col4 = st.columns(2)
-        
-        with col3:
+            
             st.write("### Study Types")
-            fig_type = create_study_type_chart(docs)
+            fig_type = create_study_type_chart(filtered_docs)
             st.pyplot(fig_type)
             plt.close(fig_type)
         
-        with col4:
+        with col2:
             st.write("### Trial Status")
-            fig_status = create_status_distribution_chart(docs)
+            fig_status = create_status_distribution_chart(filtered_docs)
             st.pyplot(fig_status)
             plt.close(fig_status)
-        
-        # Third row - single column for the conditions chart (it's usually wider)
-        st.write("### Top Conditions Being Studied")
-        fig_conditions = create_top_conditions_chart(docs)
-        st.pyplot(fig_conditions)
-        plt.close(fig_conditions)
+            
+            st.write("### Top Conditions")
+            fig_conditions = create_top_conditions_chart(filtered_docs)
+            st.pyplot(fig_conditions)
+            plt.close(fig_conditions)
 
 if __name__ == "__main__":
     main()
