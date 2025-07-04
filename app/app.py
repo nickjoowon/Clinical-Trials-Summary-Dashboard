@@ -21,6 +21,7 @@ sys.path.insert(0, str(project_root))
 # Now import the modules
 from src.rag.rag_manager import RAGManager
 from src.data.clinical_trials import fetch_clinical_trials, preprocess_trial_data
+from langchain.schema import Document
 
 # Set page config
 st.set_page_config(
@@ -38,9 +39,25 @@ def get_trials_data(rag_manager):
     if rag_manager is None:
         st.error("RAG system is not properly initialized. Please check your OpenAI API key and try again.")
         return []
-    # Fetch all documents from the vector store by using a large k value
-    # This will retrieve up to 1000 documents (or all if less than 1000)
-    return rag_manager.vector_store.similarity_search("", k=1000)
+    
+    try:
+        # Get all documents from the vector store using the get() method
+        # This retrieves ALL documents without any limit
+        all_data = rag_manager.vector_store.get()
+        
+        # Convert the raw data back to Document objects
+        documents = []
+        for i in range(len(all_data["ids"])):
+            doc = Document(
+                page_content=all_data["documents"][i],
+                metadata=all_data["metadatas"][i] if all_data["metadatas"] else {}
+            )
+            documents.append(doc)
+        
+        return documents
+    except Exception as e:
+        st.error(f"Error retrieving documents: {str(e)}")
+        return []
 
 def create_trials_per_year_chart(docs):
     """Create a bar chart showing the number of clinical trials per year."""
@@ -363,7 +380,7 @@ def initialize_rag_system():
                     try:
                         from data_pipeline import ClinicalTrialsDataPipeline
                         pipeline = ClinicalTrialsDataPipeline()
-                        success = pipeline.run_pipeline(start_date="2024-01-01", max_results=1000)
+                        success = pipeline.run_pipeline(start_date="2024-01-01")
                         if success:
                             st.success("Data pipeline completed! Refreshing...")
                             st.rerun()
